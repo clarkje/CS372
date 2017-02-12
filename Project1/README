@@ -1,0 +1,34 @@
+CS372_400_W2017
+Project 1
+Jeromie Clark <clarkje@oregonstate.edu>
+
+Extra Credit:
+  The server is a forking multithreaded server.
+
+Chat Server:
+
+To run:
+  python ./chatserve.py <port> &
+
+example:
+  python ./chatserve.py 12358 &
+
+Note:
+  The server picks up the hostname with socket.gethostname().
+
+  It will respond to the actual hostname (flip3, flip3.engr.oregonstate.edu),
+  but will not respond to localhost by default (at least on flip).
+
+To Exit:
+  hit CTRL-C
+
+Chat Client:
+
+To compile:
+  make
+
+To run:
+  ./chatclient <host> <port>
+
+example:
+  ./chatclient flip3 12358
