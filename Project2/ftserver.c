@@ -110,7 +110,8 @@ void listenForCommands(int socketFileDescriptor) {
   // Modeled on example in Beej's Guide to Network Programming, pp. 23
   struct sockaddr_storage their_addr;
   socklen_t addr_size;
-  int currentFd = -1;    // The socket file descriptor for the current accepted connection
+  int currentFd = -1;    // Socket descriptor for the current command connection
+  int dataFd = -1;       // Socket descriptor for the data connection
   int status;
   if(DEBUG) {
     printf("listenForCommands: calling listen(%d)\n", socketFileDescriptor);
@@ -167,12 +168,53 @@ void listenForCommands(int socketFileDescriptor) {
 /*
 * Negotiate a socket connection for data transfer on a client-supplied port
 */
+
 int establishDataConnection(int socketFd) {
 
-  return dataFd;
+  int numbytes;
+  socklen_t len;
+  struct sockaddr_storage addr;
+  struct sockaddr_storage clientAddr;   // Client socket info
+  char* inBuffer[MAX_COMMAND_LENGTH];   // Client Input Buffer
+  char* inPort[MAX_PORT_LENGTH];        // Client-supplied Port
+
+
+  send(socketFd, "HELLO", 5, 0);
+
+  // Beej's Guide to Network Programming, pp. 31
+  if ((numbytes = recv(socketFd, inBuffer, MAX_COMMAND_LENGTH-1, 0 ) == -1)) {
+    perror("establishDataConnection: recv() failed\n");
+    exit(EXIT_FAILURE);
+  }
+
+  if (strncmp("DATA_PORT", *inBuffer, 9) == 0) {
+
+    // Copy the characters after "_DATA_PORT" into the buffer for the filename
+    // Pass in a pointer to the 9th character in inBuffer
+    strncpy(*inBuffer, inPort[8], MAX_PORT_LENGTH);
+
+    // I get that this truncates the string wherever the non-alpha character arrives.
+    // It's good enough for now.
+    // TODO: improve the whitespace-in-front case...
+    // Inspriation from: http://stackoverflow.com/questions/16431858/removing-non-alpha-characters-in-c
+
+    int i;
+    for (i = 0; i < sizeof(inPort); i++) {
+      if ((*inPort[i] < '0' || *inPort[i] > '9') && *inPort[i] != '\0') {
+        *inPort[i] = '\0';
+      }
+    }
+
+    // Get the client's IP
+    // http://beej.us/guide/bgnet/output/html/multipage/getpeernameman.html
+    len = sizeof addr;
+    getpeername(socketFd, (struct sockaddr*)&addr, &len);
+    struct sockaddr_in *clientAddr = (struct sockaddr_in *)&addr;
+
+  }
+  // return dataFd;
+  return 0;
 }
-
-
 
 /*
 * Handles commands sent from client
@@ -248,20 +290,20 @@ void handleCommands(int socketFd) {
   }
 }
 
-void sendFile(int socketFd, *char filename) {
+/*
+* Transmits a file to the client
+* Returns number of bytes transmitted, or -1 on error
+*/
+
+int sendFile(int socketFd, char* filename) {
 
   // If there's no file, we can't do anything anyway
   // Just send an error to the client and return an error code
   if (fileExists(filename) == 0) {
-    send(socketFd, 'ERROR_FILE_NOT_FOUND', 20, 0);
+    send(socketFd, "ERROR_FILE_NOT_FOUND", 20, 0);
     return 1;
   }
 }
-
-
-
-
-
 
 /*
 * Determines whether or not a file exists.
