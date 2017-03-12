@@ -40,9 +40,11 @@
 #include <unistd.h>
 #include "ftserver.h"
 
+#define MIN_DATA_PORT 20201     // The first port number we'll try to bind to when creating a listener for file data
 #define MAX_PORT_LENGTH 6       // The number of digits we'll take in the commandline port parameter
+#define MAX_FILENAME_LENGTH 255 // Maximum length accepted for a filename
 #define MAX_COMMAND_LENGTH 256  // Maximum length accepted for client-side command
-#define MAX_DIR_LENGTH 65536  // Maximum length accepted for directory listings
+#define MAX_DIR_LENGTH 65536    // Maximum length accepted for directory listings
 #define BACKLOG 10              // Number of pending connections the queue will hold
 #define DEBUG 1                 // Print debug messages
 
@@ -81,6 +83,10 @@ int main ( int argc, char *argv[]) {
   }
   // Bind to the command port, get the resulting socket descriptor
   commandSocketDescriptor = openSocket(portNum);
+  if (commandSocketDescriptor == -1) {
+    printf("Unable to bind to supplied socket.  Exiting");
+    exit(EXIT_FAILURE);
+  }
 
   // Listen to the socket for commands
   listenForCommands(commandSocketDescriptor);
@@ -159,6 +165,16 @@ void listenForCommands(int socketFileDescriptor) {
 }
 
 /*
+* Negotiate a socket connection for data transfer on a client-supplied port
+*/
+int establishDataConnection(int socketFd) {
+
+  return dataFd;
+}
+
+
+
+/*
 * Handles commands sent from client
 */
 
@@ -172,6 +188,7 @@ void handleCommands(int socketFd) {
 
   char dirString[MAX_DIR_LENGTH];     // directory listing output
   char inBuffer[MAX_COMMAND_LENGTH];  // client command input
+  char inFile[MAX_FILENAME_LENGTH];   // max length for a filename
 
   // Initialize the memory for our buffer
   memset(inBuffer, '\0', MAX_COMMAND_LENGTH);
@@ -190,36 +207,84 @@ void handleCommands(int socketFd) {
     }
 
     // Handle the LIST command
-    // Returns a directory listing
+    // Returns a directory listing of the current working directory on the server
     // Using strncmp to minimize issues with line endings and junk data
-    if (strncmp("LIST", inBuffer, 4) == 0) {
-
-      listBytes = send(socketFd, "HELLO", 6, 0);
-
+    if (strncmp("-l", inBuffer, 2) == 0) {
       // Populate dirString with the contents of the current directory
       getDirectoryListing(dirString, MAX_DIR_LENGTH-1);
-      printf("returned dirString: %s", dirString);
-      listBytes = send(socketFd, dirString, MAX_DIR_LENGTH, 0);
-      printf("bytes sent: %d", listBytes);
-
+      send(socketFd, dirString, MAX_DIR_LENGTH, 0);
     }
 
-    // Handle the OPEN_DATA command
-    // Opens a new connection to the client
-    if (strncmp("OPEN_DATA", inBuffer, 9) == 0)  {
-      if (DEBUG) {
-        printf("handleCommands: handling OPEN_DATA command\n");
+    // Client Command: -g <filename>
+    // Retrieve a file from the current working directory on the server
+    if (strncmp("-g", inBuffer, 2) == 0) {
+
+      // Copy the characters after "-g " into the buffer for the filename
+      // Pass in a pointer to the 5th character in inBuffer
+      strncpy(inFile, &inBuffer[3], MAX_FILENAME_LENGTH);
+
+      // I get that this truncates the string wherever the non-alpha character arrives.
+      // It's good enough for now.
+      // TODO: improve the whitespace-in-front case...
+      // Inspriation from: http://stackoverflow.com/questions/16431858/removing-non-alpha-characters-in-c
+
+      int i;
+      for (i = 0; i < sizeof(inFile); i++) {
+        if ((inFile[i] < 'A' || inFile[i] > 'z') && inFile[i] != '.' && inFile[i] != '\0') {
+          inFile[i] = '\0';
+        }
       }
-    }
 
+      if (sendFile(socketFd, inFile) != 0) {
+        // Something bad happened
+      }
+
+    }
   }
   // Initialize the buffer again
   inBuffer[MAX_COMMAND_LENGTH] = '\0';
-
   if(DEBUG) {
     printf("handleCommands() exited\n");
   }
 }
+
+void sendFile(int socketFd, *char filename) {
+
+  // If there's no file, we can't do anything anyway
+  // Just send an error to the client and return an error code
+  if (fileExists(filename) == 0) {
+    send(socketFd, 'ERROR_FILE_NOT_FOUND', 20, 0);
+    return 1;
+  }
+}
+
+
+
+
+
+
+/*
+* Determines whether or not a file exists.
+*/
+
+int fileExists(char *filename) {
+
+  DIR *dir_p;               // Pointer to the directory handle
+  struct dirent *entry_p;    // Pointer to the directory entry_p
+
+  dir_p = opendir("./");
+  while ((entry_p = readdir(dir_p)) && entry_p != NULL) {
+
+    printf("checking %s against %s...\n", entry_p->d_name, filename);
+
+    if (strcmp(entry_p->d_name, filename ) == 0) {
+      return 1;
+    }
+  }
+  return 0;
+}
+
+
 
 /*
 * Writes a directory listing of the current working directory to the supplied buffer
@@ -275,8 +340,7 @@ void getDirectoryListing(char* buf, int maxLen) {
 /*
 * Opens a socket on the supplied port
 * If we can bind to the supplied port, we return a socket file pointer
-* Otherwise, we just exit directly.
-* TODO: Be a little more elegant about passing up error codes or something to the caller.
+* Otherwise, we return -1
 */
 
 int openSocket(int portNum) {
@@ -304,7 +368,7 @@ int openSocket(int portNum) {
   if ((status = getaddrinfo(NULL, port, &hints, &result ) != 0)) {
     // If the attempt to populate the struct fails, print the error
     fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(status));
-    exit(EXIT_FAILURE);
+    return -1;
   }
 
   // getaddrinfo() returns a list of address structures.
@@ -320,7 +384,7 @@ int openSocket(int portNum) {
     // Beej's guide to network programming, pp.28
     if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
        perror("setsockopt failed");
-       exit(1);
+       return -1;
      }
 
     if (bind(sfd, rp->ai_addr, rp->ai_addrlen) == 0)
@@ -336,7 +400,7 @@ int openSocket(int portNum) {
     if(DEBUG) {
       printf("openSocket(): could not bind. exiting\n");
     }
-    exit(EXIT_FAILURE);
+    return -1;
   }
 
   // Free result struct, since it's no longer needed
