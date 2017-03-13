@@ -5,7 +5,7 @@ all: ftserver
 
 # http://bit.ly/2lDEmlf
 debug: CFLAGS += -g
-debug: chatclient
+debug: ftserver
 
 ftserver: ftserver.o
 	$(CC) -o ftserver ftserver.o -I.

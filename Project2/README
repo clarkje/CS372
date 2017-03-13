@@ -1,0 +1,42 @@
+Project 2
+CS372_400_W2017
+Jeromie Clark <clarkje@oregonstate.edu>
+
+Notes:
+I left the debug logging on in the server.
+
+Forking causes output to the screen to be more complex, so I figured more verbose
+output would help establish confidence that I'm talking to the data port, etc.
+
+If it's too annoying, just set the #define DEBUG to 0
+
+Extra Credit:
+- The server is multithreaded, forking server, and reuses the command port.
+  I messed something up with the data port, and it is not reusable.
+  It's probably something stupid, but I'm behind already.
+
+- The server and client handle binary file transfers just fine.  (Tested with PDF content)
+
+- To ensure that large files transfer reliably (I tested transfers up to 1 GB),
+  I use a timeout after packets stop arriving to allow for stragglers to be received.
+  I thought this would provide less headache when dealing with binary transfers
+  than defining a reliable EOF signal, but not something I'd want to do in real life.
+
+Instructions:
+
+Compiling the server:
+make
+
+Executing the server:
+./ftserver <port>
+e.g. ./ftserver 12345
+
+Executing the client
+python ftclient.py <SERVER_HOST> <SERVER_PORT> -l <DATA_PORT>
+python ftclient.py <SERVER_HOST> <SERVER_PORT> -g <FILENAME> <DATA_PORT>
+
+e.g. python ftclient.py flip1 12345 -l 12358
+     python ftclient.py flip1 12346 -g bloop.txt 12347
+
+Stopping the server:
+Hit Ctrl-C
